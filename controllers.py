@@ -21,12 +21,16 @@ class PIDController(BaseController):
   def __init__(self):
     from tinyphysics import STEER_RANGE
 
-    self.Kp = 1.0 # Proportional Gain
-    self.Ki = 0.1 # Integral Gain, dt is absorbed as it's constant
-    self.Kd = 0.05 # Derivative Gain
-    self.Kaw = 0.1 # Anti-Windup Gain
+    self.Kp = 0.45 # Proportional Gain
+    self.Ki = 0.01 # Integral Gain, dt is absorbed as it's constant
+    self.Kd = 0.01 # Derivative Gain
+    self.Kaw = 0.01 # Anti-Windup Gain
+    self.momentum = 0 # Momentum factor for the derivative term
     self.u_bounds = STEER_RANGE # Min and Max Control Outputs (Taken from tinyphysics.py)
+    self.derivative_filter = 0.9  # Filter coefficient for the derivative term
+
     self.integral = 0 # Accumulative Integral
+    self.filtered_derivative = 0  # Initial filtered derivative value
     self.prev_error = 0 # Error on the last update
     self.u_prev = 0 # Previous control output
 
@@ -34,10 +38,15 @@ class PIDController(BaseController):
 
     error = target_lataccel - current_lataccel
     self.integral += error
-    derivative = error - self.prev_error
+
+    # Raw derivative
+    raw_derivative = error - self.prev_error
+
+    # Apply the low-pass filter to the derivative term
+    self.filtered_derivative = self.derivative_filter * self.filtered_derivative + (1 - self.derivative_filter) * raw_derivative
 
     # Computing the control output
-    u_calculated = self.Kp * error + self.Ki * self.integral + self.Kd * derivative
+    u_calculated = self.Kp * error + self.Ki * self.integral + self.Kd * self.filtered_derivative
     u_actual = max(self.u_bounds[0], min(self.u_bounds[1], u_calculated))
 
     # Anti-windup adjustment

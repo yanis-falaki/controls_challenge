@@ -1,3 +1,6 @@
+import torch
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 class BaseController:
   def update(self, target_lataccel, current_lataccel, state):
     raise NotImplementedError
@@ -5,6 +8,7 @@ class BaseController:
 
 class OpenController(BaseController):
   def update(self, target_lataccel, current_lataccel, state):
+    print('STATE: ', state)
     return target_lataccel
 
 
@@ -53,10 +57,24 @@ class PIDController(BaseController):
     self.u_prev = u_actual
 
     return u_actual
+  
+
+class MLPController(BaseController):
+  def __init__(self):
+    self.model = torch.load('./models/mlp_controller_model.pth').to(device)
+    self.model.eval()  # Set the model to evaluation mode
+
+  def update(self, target_lataccel, current_lataccel, state):
+    # order: vEgo,aEgo,roll,targetLateralAcceleration
+    input_data = [state.v_ego, state.a_ego, state.roll_lataccel, target_lataccel]
+    input_tensor = torch.tensor(input_data, dtype=torch.float32).unsqueeze(0).to(device)  # Convert to tensor and add batch dimension
+    output = self.model(input_tensor).item()
+    return output
 
 
 CONTROLLERS = {
   'open': OpenController,
   'simple': SimpleController,
-  'pid': PIDController
+  'pid': PIDController,
+  'mlp': MLPController
 }

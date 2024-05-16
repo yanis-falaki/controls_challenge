@@ -5,9 +5,6 @@ class BaseController:
 
 class OpenController(BaseController):
   def update(self, target_lataccel, current_lataccel, state):
-    print('TARGET_LATACCEL:', target_lataccel)
-    print('CURRENT_LATACCEL:', current_lataccel)
-    print('STATE:', state)
     return target_lataccel
 
 
@@ -21,13 +18,12 @@ class PIDController(BaseController):
   def __init__(self):
     from tinyphysics import STEER_RANGE
 
-    self.Kp = 0.45 # Proportional Gain
-    self.Ki = 0.01 # Integral Gain, dt is absorbed as it's constant
+    self.Kp = 0.2 # Proportional Gain
+    self.Ki = 0.03 # Integral Gain, dt is absorbed as it's constant
     self.Kd = 0.01 # Derivative Gain
-    self.Kaw = 0.01 # Anti-Windup Gain
-    self.momentum = 0 # Momentum factor for the derivative term
+    self.Kaw = 0.03 # Anti-Windup Gain
     self.u_bounds = STEER_RANGE # Min and Max Control Outputs (Taken from tinyphysics.py)
-    self.derivative_filter = 0.9  # Filter coefficient for the derivative term
+    self.derivative_filter = 0.6  # Filter coefficient for the derivative term
 
     self.integral = 0 # Accumulative Integral
     self.filtered_derivative = 0  # Initial filtered derivative value

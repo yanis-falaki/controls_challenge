@@ -1,4 +1,5 @@
 import torch
+from torch.distributions import Normal
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class BaseController:
@@ -70,11 +71,30 @@ class MLPController(BaseController):
     input_tensor = torch.tensor(input_data, dtype=torch.float32).unsqueeze(0).to(device)  # Convert to tensor and add batch dimension
     output = self.model(input_tensor).item()
     return output
+  
+
+class ActorCriticController(BaseController):
+    def __init__(self):
+      self.model = torch.load('./models/actor_critic.pth').to(device)
+      self.model.eval()
+
+    def update(self, target_lataccel, current_lataccel, state):
+        state_tensor = torch.tensor([[target_lataccel, current_lataccel, state[0], state[1], state[2]]], dtype=torch.float32)
+        state_tensor = state_tensor.unsqueeze(0)  # Add batch dimension
+        mean_log_std, state_value = self.model(state_tensor)
+        # Split mean and log_std
+        mean, log_std = mean_log_std.chunk(2, dim=-1)
+        # Exponentiate log to bring back to normal
+        std = log_std.exp()
+        dist = Normal(mean, std)
+        action = dist.sample()
+        return action.item()
 
 
 CONTROLLERS = {
   'open': OpenController,
   'simple': SimpleController,
   'pid': PIDController,
-  'mlp': MLPController
+  'mlp': MLPController,
+  'a2c': ActorCriticController
 }

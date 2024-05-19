@@ -1,5 +1,6 @@
 import torch
-from torch.distributions import Normal
+from torch.distributions import Normal, Categorical
+import numpy as np
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class BaseController:
@@ -73,7 +74,7 @@ class MLPController(BaseController):
     return output
   
 
-class ActorCriticController(BaseController):
+class ActorCriticControllerV1(BaseController):
     def __init__(self):
       self.model = torch.load('./models/actor_critic.pth').to(device)
       self.model.eval()
@@ -89,6 +90,21 @@ class ActorCriticController(BaseController):
         dist = Normal(mean, std)
         action = dist.sample()
         return action.item()
+    
+class ActorCriticControllerV2(BaseController):
+    def __init__(self):
+      from tinyphysics import STEER_RANGE
+      action_space_n = 15
+      self.model = torch.load('./models/actor_critic.pth').to(device)
+      self.model.eval()
+      self.actions = np.linspace(STEER_RANGE[0], STEER_RANGE[1], action_space_n + 1)
+
+    def update(self, target_lataccel, current_lataccel, state):
+        state_tensor = torch.tensor([[target_lataccel, current_lataccel, state[0], state[1], state[2]]], dtype=torch.float32, device=device)
+        probs, state_value = self.model(state_tensor)
+        m = Categorical(probs)
+        action = m.sample()
+        return self.actions[action.item()]
 
 
 CONTROLLERS = {
@@ -96,5 +112,6 @@ CONTROLLERS = {
   'simple': SimpleController,
   'pid': PIDController,
   'mlp': MLPController,
-  'a2c': ActorCriticController
+  'a2c1': ActorCriticControllerV1,
+  'a2c2': ActorCriticControllerV2
 }

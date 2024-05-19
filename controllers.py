@@ -1,6 +1,7 @@
 import torch
 from torch.distributions import Normal, Categorical
 import numpy as np
+from PidMLP import PidMLP
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class BaseController:
@@ -63,18 +64,34 @@ class PIDController(BaseController):
     return u_actual
   
 
-class MLPController(BaseController):
-  def __init__(self):
-    self.model = torch.load('./models/mlp_controller_model.pth').to(device)
-    self.model.eval()  # Set the model to evaluation mode
+class PidMLP(BaseController):
+    def __init__(self):
+        self.integral = 0
+        self.prev_error = 0
+        self.prev_action = 0
+        self.prev_derivative = 0
 
-  def update(self, target_lataccel, current_lataccel, state):
-    # order: vEgo,aEgo,roll,targetLateralAcceleration
-    input_data = [state.v_ego, state.a_ego, state.roll_lataccel, target_lataccel]
-    input_tensor = torch.tensor(input_data, dtype=torch.float32).unsqueeze(0).to(device)  # Convert to tensor and add batch dimension
-    output = self.model(input_tensor).item()
-    return output
-  
+        self.model = torch.load('./models/mlp_pid.pth').to(device)
+        self.model.eval()
+
+        action_space_n = 50
+        self.action_bins = np.linspace(-2, 2, action_space_n)
+
+    def update(self, target_lataccel, current_lataccel, state):
+        error = target_lataccel - current_lataccel
+        self.integral += error
+        derivative = error - self.prev_error
+
+        action_vector = self.model(torch.tensor([[target_lataccel, current_lataccel, state[0], state[1], state[2], 
+                                                 error, self.prev_error, self.integral, derivative, self.prev_derivative, self.prev_action]], dtype=torch.float32, device=device))[0]
+        action_idx = torch.argmax(action_vector)
+        action = self.action_bins[action_idx]
+
+        self.prev_error = error
+        self.prev_derivative = derivative
+        self.prev_action = action
+
+        return action
 
 class ActorCriticControllerV1(BaseController):
     def __init__(self):
@@ -82,7 +99,7 @@ class ActorCriticControllerV1(BaseController):
       self.model.eval()
 
     def update(self, target_lataccel, current_lataccel, state):
-        state_tensor = torch.tensor([[target_lataccel, current_lataccel, state[0], state[1], state[2]]], dtype=torch.float32)
+        state_tensor = torch.tensor([[target_lataccel, current_lataccel, state[0], state[1], state[2]]], device=device, dtype=torch.float32)
         state_tensor = state_tensor.unsqueeze(0)  # Add batch dimension
         mean_log_std, state_value = self.model(state_tensor)
         # Split mean and log_std
@@ -113,7 +130,7 @@ CONTROLLERS = {
   'open': OpenController,
   'simple': SimpleController,
   'pid': PIDController,
-  'mlp': MLPController,
   'a2c1': ActorCriticControllerV1,
-  'a2c2': ActorCriticControllerV2
+  'a2c2': ActorCriticControllerV2,
+  'pid_mlp': PidMLP
 }

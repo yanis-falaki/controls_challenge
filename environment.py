@@ -3,9 +3,8 @@ from tinyphysics import TinyPhysicsModel, TinyPhysicsSimulator, STEER_RANGE, CON
 from controllers import CONTROLLERS
 
 class Environment():
-    def __init__(self):
+    def __init__(self, data_path="./data/00001.csv"):
         model_path = "./models/tinyphysics.onnx"
-        data_path = "./data/00000.csv"
         controller_name = "simple"
         debug = False
 

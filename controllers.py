@@ -35,6 +35,7 @@ class PIDController(BaseController):
     self.filtered_derivative = 0  # Initial filtered derivative value
     self.prev_error = 0 # Error on the last update
     self.u_prev = 0 # Previous control output
+    self.prev_derivative = 0
 
   def update(self, target_lataccel, current_lataccel, state):
 
@@ -43,6 +44,7 @@ class PIDController(BaseController):
 
     # Raw derivative
     raw_derivative = error - self.prev_error
+    self.prev_derivative = raw_derivative
 
     # Apply the low-pass filter to the derivative term
     self.filtered_derivative = self.derivative_filter * self.filtered_derivative + (1 - self.derivative_filter) * raw_derivative

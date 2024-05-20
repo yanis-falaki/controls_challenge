@@ -1,9 +1,9 @@
 import numpy as np
-from tinyphysics import TinyPhysicsModel, TinyPhysicsSimulator, STEER_RANGE, CONTROL_START_IDX, DEL_T, LAT_ACCEL_COST_MULTIPLIER
+from tinyphysics import TinyPhysicsModel, TinyPhysicsSimulator, STEER_RANGE, CONTROL_START_IDX, DEL_T, LAT_ACCEL_COST_MULTIPLIER, CONTEXT_LENGTH
 from controllers import CONTROLLERS
 
 class Environment():
-    def __init__(self, data_path="./data/00001.csv"):
+    def __init__(self, data_path="./data/00000.csv"):
         model_path = "./models/tinyphysics.onnx"
         controller_name = "simple"
         debug = False
@@ -24,6 +24,10 @@ class Environment():
                 aEgo: float
                 roll: float
         """
+        self.lataccel_costs = []
+        self.jerk_costs = []
+        self.total_costs = []
+
         self.sim.reset()
         self.initial_steps()
 
@@ -61,7 +65,10 @@ class Environment():
                 vEgo: float
                 aEgo: float
                 roll: float
-            Reward: float
+            Cost (numpy array): 
+                lataccel_cost: float
+                jerk_cost: float
+                total_cost: float
         """
 
         # Analoguous to sim.sim_control_step
@@ -71,18 +78,36 @@ class Environment():
         self.sim.sim_step(self.sim.step_idx)
         self.sim.step_idx += 1
 
-        state, target = self.sim.get_state_target(self.sim.step_idx)
-        self.sim.state_history.append(state)
-        self.sim.target_lataccel_history.append(target)
+        done = self.sim.step_idx >= len(self.sim.data)
 
-        # For now the cost is just the negative squared difference between actual lataccel and the target at the last timestep
-        cost = -np.square(self.sim.target_lataccel_history[self.sim.step_idx] - self.sim.current_lataccel)
+        if not done:
+            state, target = self.sim.get_state_target(self.sim.step_idx)
+            self.sim.state_history.append(state)
+            self.sim.target_lataccel_history.append(target)
 
-        return np.array([self.sim.target_lataccel_history[self.sim.step_idx], self.sim.current_lataccel, *self.sim.state_history[self.sim.step_idx]]), cost, self.sim.step_idx >= len(self.sim.data)-1
-    
-    def compute_cost(self, last_lataccel):
-        lataccel_cost = np.square(self.sim.current_lataccel - self.sim.target_lataccel_history[self.sim.step_idx]) * 100
-        jerk_cost = np.square((self.sim.current_lataccel - last_lataccel) / DEL_T) * 100
+            # For now the cost is just the negative squared difference between actual lataccel and the target at the last timestep
+            cost = self.compute_cost()
+
+            return np.array([self.sim.target_lataccel_history[self.sim.step_idx], self.sim.current_lataccel, *self.sim.state_history[self.sim.step_idx]]), cost, done
+        else:
+            return np.array([0, 0, 0, 0, 0]), 0, done
+            
+    def compute_cost(self):
+        target = self.sim.target_lataccel_history[-1]
+        pred = self.sim.current_lataccel_history[-1]
+
+        lataccel_cost = ((target - pred)**2) * 100
+        jerk_cost = (((pred - self.sim.current_lataccel_history[-2]) / DEL_T)**2) * 100
         total_cost = (lataccel_cost * LAT_ACCEL_COST_MULTIPLIER) + jerk_cost
 
-        return lataccel_cost, jerk_cost, total_cost
+        return np.array([lataccel_cost, jerk_cost, total_cost])
+    
+    def get_total_cost(self):
+        target = np.array(self.sim.target_lataccel_history)[CONTROL_START_IDX:]
+        pred = np.array(self.sim.current_lataccel_history)[CONTROL_START_IDX:]
+
+        lat_accel_cost = np.mean((target - pred)**2) * 100
+        jerk_cost = np.mean((np.diff(pred) / DEL_T)**2) * 100
+        total_cost = (lat_accel_cost * LAT_ACCEL_COST_MULTIPLIER) + jerk_cost
+
+        return np.array([lat_accel_cost, jerk_cost, total_cost])

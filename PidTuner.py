@@ -37,8 +37,16 @@ space = [
     Real(-2, 2.0, name='derivative_filter')
 ]
 
+initial_point = [
+    0.06454994055465546,
+    0.12011229078206309,
+    -0.16191885078907142,
+    1.060949605506968,
+    0.24726201219211585
+]
+
 # Perform Bayesian optimization with progress callback
-result = gp_minimize(objective, space, n_calls=150, random_state=0, callback=[VerboseCallback(n_total=150)])
+result = gp_minimize(objective, space, n_calls=150, random_state=0, x0=initial_point, callback=[VerboseCallback(n_total=150)])
 
 # Get the best parameters and cost
 best_params = result.x

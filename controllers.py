@@ -20,23 +20,49 @@ class SimpleController(BaseController):
     return (target_lataccel - current_lataccel) * 0.3
   
 
+class SimplePIDController(BaseController):
+  def __init__(self, k_p=0.044, k_i=0.1, k_d=-0.035):
+    self.k_p = k_p
+    self.k_i = k_i
+    self.k_d = k_d
+    self.integral = 0.0
+    self.prev_error = 0.0
+
+  def update(self, target_lataccel, current_lataccel, state):
+    error = target_lataccel - current_lataccel
+    self.integral += error
+    derivative = error - self.prev_error
+
+    steer_action = (
+      self.k_p * error
+      + self.k_i * self.integral
+      + self.k_d * derivative
+    )
+
+    self.prev_error = error
+    return steer_action
+
+  
+
 class PIDController(BaseController):
   """Basic PID controller"""
-  def __init__(self):
+  # Parameters were found using bayesian optimization in PidTuner.py
+  def __init__(self, Kp=0.06454994055465546, Ki=0.12011229078206309, Kd=-0.16191885078907142, Kaw=1.060949605506968, derivative_filter=0.24726201219211585):
     from tinyphysics import STEER_RANGE
 
-    self.Kp = 0.2 # Proportional Gain
-    self.Ki = 0.03 # Integral Gain, dt is absorbed as it's constant
-    self.Kd = 0.01 # Derivative Gain
-    self.Kaw = 0.03 # Anti-Windup Gain
+    self.Kp = Kp # Proportional Gain
+    self.Ki = Ki # Integral Gain, dt is absorbed as it's constant
+    self.Kd = Kd # Derivative Gain
+    self.Kaw = Kaw # Anti-Windup Gain
     self.u_bounds = STEER_RANGE # Min and Max Control Outputs (Taken from tinyphysics.py)
-    self.derivative_filter = 0.6  # Filter coefficient for the derivative term
+    self.derivative_filter = derivative_filter  # Filter coefficient for the derivative term
 
     self.integral = 0 # Accumulative Integral
     self.filtered_derivative = 0  # Initial filtered derivative value
     self.prev_error = 0 # Error on the last update
     self.u_prev = 0 # Previous control output
     self.prev_derivative = 0
+
 
   def update(self, target_lataccel, current_lataccel, state):
 
@@ -97,6 +123,7 @@ class PidMLP(BaseController):
 CONTROLLERS = {
   'open': OpenController,
   'simple': SimpleController,
+  'spid': SimplePIDController,
   'pid': PIDController,
   'pid_mlp': PidMLP
 }

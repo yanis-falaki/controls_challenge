@@ -90,7 +90,7 @@ class Environment():
 
             return np.array([self.sim.target_lataccel_history[self.sim.step_idx], self.sim.current_lataccel, *self.sim.state_history[self.sim.step_idx]]), cost, done
         else:
-            return np.array([0, 0, 0, 0, 0]), 0, done
+            return np.array([0, 0, 0, 0, 0]), [0, 0, 0], done
             
     def compute_cost(self):
         target = self.sim.target_lataccel_history[-1]

@@ -1,5 +1,9 @@
-from environment import Environment
 from controllers import PIDController
+import numpy as np
+from tqdm import tqdm
+from pathlib import Path
+import pandas as pd
+from tinyphysics import TinyPhysicsSimulator, TinyPhysicsModel
 from skopt import gp_minimize
 from skopt.space import Real
 from skopt.callbacks import VerboseCallback
@@ -7,21 +11,20 @@ from skopt.callbacks import VerboseCallback
 # Define the objective function
 def objective(params):
     Kp, Ki, Kd, Kaw, derivative_filter = params
-    
-    env = Environment()
-    state = env.reset()
-    controller = PIDController(Kp=Kp, Ki=Ki, Kd=Kd, Kaw=Kaw, derivative_filter=derivative_filter)
-    total_cost = 0
 
-    while True:
-        params = [state[0], state[1], (state[2], state[3], state[4])]
-        action = controller.update(*params)
-        next_state, cost, done = env.step(action)
-        state = next_state
+    tinyphysicsmodel = TinyPhysicsModel("./models/tinyphysics.onnx", debug=False)
+    data_path = Path(data_path)
+    assert data_path.is_dir(), "data_path should be a directory"
 
-        if done:
-            total_cost = env.get_total_cost()[2]
-            break
+    costs = []
+    files = sorted(data_path.iterdir())[:100]
+    for data_file in tqdm(files, total=len(files)):
+        sim = TinyPhysicsSimulator(tinyphysicsmodel, str(data_file), controller=PIDController(Kp, Ki, Kd, Kaw, derivative_filter), debug=False)
+        cost = sim.rollout()
+        costs.append(cost)
+
+    costs_df = pd.DataFrame(costs)
+    total_cost = np.mean(costs_df['total_cost'])
 
     return total_cost
 

@@ -1,18 +1,31 @@
 import numpy as np
 from tinyphysics import TinyPhysicsModel, TinyPhysicsSimulator, STEER_RANGE, CONTROL_START_IDX, DEL_T, LAT_ACCEL_COST_MULTIPLIER, CONTEXT_LENGTH
 from controllers import CONTROLLERS
+import gymnasium as gym
+from gymnasium import spaces
+import numpy as np
+import random
 
-class Environment():
-    def __init__(self, data_path="./data/00000.csv"):
+class Environment(gym.Env):
+    def __init__(self, custom_datapath=None, action_space_n=50):
+        self.debug = False
         model_path = "./models/tinyphysics.onnx"
-        controller_name = "simple"
-        debug = False
+        self.controller = CONTROLLERS['simple']()
+        self.custom_datapath = custom_datapath
+        self.tinyphysics_model = TinyPhysicsModel(model_path, self.debug)
 
-        self.tinyphysics_model = TinyPhysicsModel(model_path, debug)
-        self.controller = CONTROLLERS[controller_name]()
-        self.sim = TinyPhysicsSimulator(self.tinyphysics_model, data_path, self.controller, debug)
-        
-    def reset(self):
+        # Defining action space
+        self.action_space = spaces.Discrete(action_space_n)
+
+        # Defining observation space
+        observation_low = np.array([-np.inf, -np.inf, -np.inf, -np.inf, -np.inf], dtype=np.float32)
+        observation_high = np.array([np.inf, np.inf, np.inf, np.inf, np.inf], dtype=np.float32)
+        self.observation_space = spaces.Box(low=observation_low, high=observation_high, dtype=np.float32)
+
+        if self.custom_datapath is not None:
+            self.sim = TinyPhysicsSimulator(self.tinyphysics_model, self.custom_datapath, self.controller, self.debug)
+
+    def reset(self, seed=0):
         """
         Initializes the environment
 
@@ -24,6 +37,12 @@ class Environment():
                 aEgo: float
                 roll: float
         """
+        if self.custom_datapath is None:
+            csv_number = random.randint(0, 20000)
+            data_path = f"./data/{csv_number:05}.csv"
+            self.sim = TinyPhysicsSimulator(self.tinyphysics_model, data_path, self.controller, self.debug)
+
+
         self.lataccel_costs = []
         self.jerk_costs = []
         self.total_costs = []
@@ -31,7 +50,7 @@ class Environment():
         self.sim.reset()
         self.initial_steps()
 
-        return np.array([self.sim.target_lataccel_history[self.sim.step_idx], self.sim.current_lataccel, *self.sim.state_history[self.sim.step_idx]])
+        return (np.array([self.sim.target_lataccel_history[self.sim.step_idx], self.sim.current_lataccel, *self.sim.state_history[self.sim.step_idx]], dtype=np.float32), dict())
     
     def initial_steps(self):
         while self.sim.step_idx < CONTROL_START_IDX:
@@ -87,10 +106,12 @@ class Environment():
 
             # For now the cost is just the negative squared difference between actual lataccel and the target at the last timestep
             cost = self.compute_cost()
+            
+            observation = np.array([self.sim.target_lataccel_history[self.sim.step_idx], self.sim.current_lataccel, *self.sim.state_history[self.sim.step_idx]], dtype=np.float32)
 
-            return np.array([self.sim.target_lataccel_history[self.sim.step_idx], self.sim.current_lataccel, *self.sim.state_history[self.sim.step_idx]]), cost, done
+            return observation, -cost[2], done, False, dict()
         else:
-            return np.array([0, 0, 0, 0, 0]), [0, 0, 0], done
+            return np.array([0, 0, 0, 0, 0], dtype=np.float32), 0, done, False, dict()
             
     def compute_cost(self):
         target = self.sim.target_lataccel_history[-1]
@@ -111,3 +132,15 @@ class Environment():
         total_cost = (lat_accel_cost * LAT_ACCEL_COST_MULTIPLIER) + jerk_cost
 
         return np.array([lat_accel_cost, jerk_cost, total_cost])
+    
+    def close(self):
+        pass
+
+    def render(self, mode='human'):
+        pass
+
+
+if __name__ == "__main__":
+    from stable_baselines3.common.env_checker import check_env
+    env = Environment()
+    check_env(env)

@@ -47,7 +47,7 @@ class SimplePIDController(BaseController):
 class PIDController(BaseController):
   """Basic PID controller"""
   # Parameters were found using bayesian optimization in PidTuner.py
-  def __init__(self, Kp=0.06454994055465546, Ki=0.12011229078206309, Kd=-0.16191885078907142, Kaw=1.060949605506968, derivative_filter=0.24726201219211585):
+  def __init__(self, Kp=0.047111529072798586, Ki=0.12436441468723247, Kd=-0.024868240310312872, Kaw=1.9469823775916133, derivative_filter=0.23845683708265408):
     from tinyphysics import STEER_RANGE
 
     self.Kp = Kp # Proportional Gain

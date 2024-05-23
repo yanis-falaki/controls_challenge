@@ -13,7 +13,7 @@ def objective(params):
     Kp, Ki, Kd, Kaw, derivative_filter = params
 
     tinyphysicsmodel = TinyPhysicsModel("./models/tinyphysics.onnx", debug=False)
-    data_path = Path(data_path)
+    data_path = Path('./data/')
     assert data_path.is_dir(), "data_path should be a directory"
 
     costs = []

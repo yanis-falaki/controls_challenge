@@ -1,12 +1,12 @@
 from environment import Environment
-from stable_baselines3 import PPO
+from sb3_contrib import RecurrentPPO
 import gymnasium as gym
 
-env = Environment(custom_datapath='./data/00001.csv')
+env = Environment(custom_datapath='./data/00000.csv')
 env.reset()
 
-model = PPO("MlpPolicy", env, verbose=1)
-model.learn(total_timesteps=100000)
+model = RecurrentPPO("MlpLstmPolicy", env, verbose=1)
+model.learn(total_timesteps=1e7)
 
 #episodes = 10
 #for ep in range(episodes):

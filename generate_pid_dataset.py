@@ -5,13 +5,13 @@ import pandas as pd
 
 pid = PIDController()
 env = Environment()
-state = env.reset()
+state, info = env.reset()
 data = []
 
-for i in range(5002, 10000): # 20k different csv files
+for i in range(1500, 20000): # 20k different csv files
     pid = PIDController()
-    env = Environment(data_path=f'./data/{str(i).zfill(5)}.csv')
-    state = env.reset()
+    env = Environment(custom_datapath=f'./data/{str(i).zfill(5)}.csv')
+    state, info = env.reset()
     for step in count():
         prev_action = 0
         prev_error = pid.prev_error
@@ -24,12 +24,14 @@ for i in range(5002, 10000): # 20k different csv files
         derivative = error - prev_error
         prev_action = action
 
-        state, reward, terminated = env.step(action)
+        state, reward, terminated, truncated, info = env.step(action)
 
         data.append((*state, error, prev_error, integral, derivative, prev_derivative, prev_action, action))
 
         if terminated:
             break
+
+    print(i)
 
 print(len(data))
 df = pd.DataFrame(data, columns=["target_lataccel", "current_lataccel", "vEgo", "aEgo", "roll", "error", "prev_error", "integral", "derivative", "prev_derivative", "prev_action", "steerCommand"])

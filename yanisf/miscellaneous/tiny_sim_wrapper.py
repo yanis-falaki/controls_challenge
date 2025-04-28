@@ -3,9 +3,11 @@ import torch
 from typing import Optional, Union, Tuple
 import pandas as pd
 from hashlib import md5
+import os
+import random
 
 import sys
-sys.path.append('..')
+sys.path.append("/home/yanisf/Documents/projects/controls_challenge/") # Bandaid fix
 
 from tinyphysics import TinyPhysicsModel,State, FuturePlan
 from tinyphysics import (
@@ -21,18 +23,22 @@ from torchrl.envs import EnvBase
 class TinySimWrapper(EnvBase):
     
     def __init__(self,
-        data_path: Optional[str] = None,
+        model_path: str,
+        data_directory_path: str,
         device: Optional[Union[str, torch.device]] = None,
         batch_size: Optional[torch.Size] = None,
         seed: Optional[int] = None,
     ):
         super().__init__(device=device, batch_size=batch_size)
-        self.dtype = torch.float32
 
-        self.data_path = data_path
-        self.sim_model = TinyPhysicsModel("../models/tinyphysics.onnx", debug=True)
-        self.data = self.get_data(data_path)
+        self.dtype = torch.float32
         self.end_at_idx = COST_END_IDX
+
+        self.sim_model = TinyPhysicsModel(model_path, debug=True)
+
+        self.data_directory_path = data_directory_path
+        self.file_data_list = [os.path.join(data_directory_path, f) for f in os.listdir(data_directory_path) if os.path.isfile(os.path.join(data_directory_path, f))]
+
         self._reset()
 
 
@@ -88,6 +94,8 @@ class TinySimWrapper(EnvBase):
         **kwargs
     ) -> TensorDict:
         """Reset the environment and return to the initial state."""
+        self.current_data_path = random.choice(self.file_data_list)
+        self.data = self.get_data(self.current_data_path)
         self.tiny_reset()
         self.update_states_targets_futureplan()
         
@@ -184,7 +192,7 @@ class TinySimWrapper(EnvBase):
         self.target_lataccel_history = [x[1] for x in state_target_futureplans]
         self.target_future = None
         self.current_lataccel = self.current_lataccel_history[-1]
-        seed = int(md5(self.data_path.encode()).hexdigest(), 16) % 10**4
+        seed = int(md5(self.current_data_path.encode()).hexdigest(), 16) % 10**4
         np.random.seed(seed)
         return self.step_idx
 

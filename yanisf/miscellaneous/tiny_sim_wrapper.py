@@ -45,9 +45,9 @@ class TinySimWrapper(EnvBase):
         # Observation Spec
         self.observation_spec = Composite(
             observation=Bounded(
-                shape=(3,),
-                low=torch.tensor([LATACCEL_RANGE[0], LATACCEL_RANGE[0], 0]),
-                high=torch.tensor([LATACCEL_RANGE[1], LATACCEL_RANGE[1], 1]),
+                shape=(6,),
+                low=torch.tensor([LATACCEL_RANGE[0], LATACCEL_RANGE[0], -torch.inf, -torch.inf, -torch.inf, 0]),
+                high=torch.tensor([LATACCEL_RANGE[1], LATACCEL_RANGE[1], torch.inf, torch.inf, torch.inf, 1]),
                 device=device, dtype=self.dtype),
             shape=()
         )
@@ -156,16 +156,11 @@ class TinySimWrapper(EnvBase):
         """Return the state specification"""
         return self.observation_spec
     
-    def update_states_targets_futureplan(self):
-        state, target, futureplan = self.get_state_target_futureplan(self.step_idx)
-        self.state_history.append(state)
-        self.target_lataccel_history.append(target)
-        self.futureplan = futureplan
-
     def create_observation_tensor(self):
         observation_tensor = torch.tensor([
             self.target_lataccel_history[self.step_idx],
             self.current_lataccel,
+            *self.state_history[self.step_idx],
             (self.step_idx - CONTROL_START_IDX) / (self.end_at_idx - CONTROL_START_IDX)
         ], dtype=self.dtype)
         """
@@ -182,6 +177,12 @@ class TinySimWrapper(EnvBase):
         jerk_cost = (((self.current_lataccel_history[step_idx] - self.current_lataccel_history[step_idx-1]) / DEL_T)**2) * 100
         total_cost = -(lat_accel_cost*LAT_ACCEL_COST_MULTIPLIER + jerk_cost)
         return total_cost
+    
+    def update_states_targets_futureplan(self):
+        state, target, futureplan = self.get_state_target_futureplan(self.step_idx)
+        self.state_history.append(state)
+        self.target_lataccel_history.append(target)
+        self.futureplan = futureplan
     
     def tiny_reset(self) -> None:
         self.step_idx = CONTEXT_LENGTH

@@ -114,7 +114,7 @@ class FrameLimitedTrainer():
 
 
     def train(self, save_model=False):
-        best_avg_episode_return = -torch.inf
+        best_avg_batch_rewards = -torch.inf
         self.actor_critic.train()
 
         for i, tensordict_data in enumerate(self.collector):
@@ -146,15 +146,12 @@ class FrameLimitedTrainer():
 
             self.scheduler.step()
 
-            avg_episode_returns = self.compute_avg_episode_returns(tensordict_data)
-            if save_model and avg_episode_returns > best_avg_episode_return:
-                best_avg_episode_return = avg_episode_returns
+            avg_batch_reward = tensordict_data["next"]["reward"].mean()
+            if save_model and avg_batch_reward > best_avg_batch_rewards:
+                best_avg_batch_rewards = avg_batch_reward
                 self.save()
 
-            if avg_episode_returns:
-                print(f"Step {i*self.frames_per_batch}, Episode {i*self.episodes_per_batch}, Average Return: {avg_episode_returns:.2f}, critic_loss {loss_vals["loss_critic"]}")
-            else:
-                print(f"Batch {i}, No completed episodes")
+            print(f"Step {i*self.frames_per_batch}, Episode {i*self.episodes_per_batch}, Average Cost: {avg_batch_reward:.2f}, critic_loss {loss_vals["loss_critic"]}")
 
 
 
@@ -162,7 +159,7 @@ if __name__ == "__main__":
     is_fork = multiprocessing.get_start_method() == "fork"
     device = torch.device(0) if torch.cuda.is_available() and not is_fork else torch.device("cpu")
 
-    num_envs = 1
+    num_envs = 6
     env = ParallelEnv(num_envs,
         lambda: TinySimWrapper(
             model_path="/home/yanisf/Documents/projects/controls_challenge/models/tinyphysics.onnx",
@@ -176,6 +173,6 @@ if __name__ == "__main__":
 
     ac = ActorCritic(in_features, num_actions, low, high, 256).to(device)
 
-    trainer = FrameLimitedTrainer(device, env, ac, total_frames_per_env=200000, frames_per_batch_per_env=2_000, clip_eps=0.2, frame_limit=400)
+    trainer = FrameLimitedTrainer(device, env, ac, total_frames_per_env=400000, frames_per_batch_per_env=1_000, clip_eps=0.2, frame_limit=400)
 
     trainer.train()

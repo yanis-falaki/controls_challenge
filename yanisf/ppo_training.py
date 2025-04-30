@@ -1,24 +1,22 @@
 
 import torch
 import torch.nn as nn
-from tensordict.nn.distributions import NormalParamExtractor
-from tensordict.nn import TensorDictModule, TensorDictSequential
+from tensordict.nn import TensorDictSequential
 from tensordict import TensorDict
 from torchrl.collectors import SyncDataCollector
-from torchrl.modules import ProbabilisticActor, TanhNormal, ValueOperator, SafeModule, ActorValueOperator
-from torchrl.envs import Compose, ObservationNorm, StepCounter, TransformedEnv, Transform, ParallelEnv
+from torchrl.envs import ParallelEnv
 from torchrl.objectives import ClipPPOLoss
 from torchrl.objectives.value import GAE
 from torchrl.data.replay_buffers import ReplayBuffer
 from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
 from torchrl.data.replay_buffers.storages import LazyTensorStorage
-from torchrl.data import Unbounded
 from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torchrl.envs.utils import set_exploration_type, ExplorationType
 
 from miscellaneous.tiny_sim_wrapper import TinySimWrapper
 from miscellaneous.torchrl_ac import ActorCritic
+from miscellaneous.attention_ac import ActorCriticWithAttention
 
 import multiprocessing
 import math
@@ -119,6 +117,9 @@ class FrameLimitedTrainer():
 
         for i, tensordict_data in enumerate(self.collector):
             for _ in range(self.num_epochs):
+                # Reshape tensordict as a single batch dim is needed for attention to work
+                tensordict_data = tensordict_data.reshape(-1, *tensordict_data.shape[2:])
+
                 # Calculate Advantage, modifies tensordict_data inplace
                 self.advantage_module(tensordict_data)
                 data_view = tensordict_data.reshape(-1)
@@ -154,25 +155,34 @@ class FrameLimitedTrainer():
             print(f"Step {i*self.frames_per_batch}, Episode {i*self.episodes_per_batch}, Average Cost: {avg_batch_reward:.2f}, critic_loss {loss_vals["loss_critic"]}")
 
 
+def check_gradients(model):
+    for name, param in model.named_parameters():
+        if param.grad is not None:
+            grad_norm = param.grad.norm()
+            if grad_norm > 1000:
+                print(f"Exploding gradient in {name}: {grad_norm}")
+            elif grad_norm < 1e-6:
+                print(f"Vanishing gradient in {name}: {grad_norm}")
 
 if __name__ == "__main__":
     is_fork = multiprocessing.get_start_method() == "fork"
     device = torch.device(0) if torch.cuda.is_available() and not is_fork else torch.device("cpu")
 
-    num_envs = 6
+    num_envs = 2
     env = ParallelEnv(num_envs,
         lambda: TinySimWrapper(
-            model_path="/home/yanisf/Documents/projects/controls_challenge/models/tinyphysics.onnx",
-            data_directory_path="/home/yanisf/Documents/projects/controls_challenge/data"),
+            model_path="/home/yanisf/Documents/coding/controls_challenge/models/tinyphysics.onnx",
+            data_directory_path="/home/yanisf/Documents/coding/controls_challenge/data"),
         device=device)
 
-    in_features = env.observation_spec["observation"].shape[-1]
+    in_features = env.observation_spec["current_state"].shape[-1] + 1
     num_actions = env.action_spec.shape[-1]
     low = env.action_spec_unbatched.space.low
     high = env.action_spec_unbatched.space.high
 
-    ac = ActorCritic(in_features, num_actions, low, high, 256).to(device)
+    #ac = ActorCritic(in_features, num_actions, low, high, 256, in_keys=["current_state", "time"]).to(device)
+    ac = ActorCriticWithAttention(num_actions, low, high).to(device)
 
-    trainer = FrameLimitedTrainer(device, env, ac, total_frames_per_env=400000, frames_per_batch_per_env=1_000, clip_eps=0.2, frame_limit=400)
+    trainer = FrameLimitedTrainer(device, env, ac, total_frames_per_env=200000, frames_per_batch_per_env=400, clip_eps=0.2, frame_limit=400)
 
     trainer.train()

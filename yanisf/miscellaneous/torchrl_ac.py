@@ -1,10 +1,11 @@
+import torch
 import torch.nn as nn
 from tensordict.nn import TensorDictModule
 from torchrl.modules import ProbabilisticActor, TanhNormal, ValueOperator, SafeModule, ActorValueOperator, NormalParamExtractor
 
-class SharedBackbone(nn.Module):
+class MLPFeatureExtractor(nn.Module):
     def __init__(self, in_features, num_cells):
-        super(SharedBackbone, self).__init__()
+        super(MLPFeatureExtractor, self).__init__()
         self.net = nn.Sequential(
             nn.Linear(in_features, num_cells),
             nn.Tanh(),
@@ -14,16 +15,18 @@ class SharedBackbone(nn.Module):
             nn.Tanh()
         )
 
-    def forward(self, x):
+    def forward(self, current_state, time):
+        print(current_state.shape)
+        x = torch.cat([current_state, time], dim=-1)
         return self.net(x)
     
 
 class ActorCritic(ActorValueOperator):
-    def __init__(self, in_features, num_actions, low, high, num_cells):
-        backbone = SharedBackbone(in_features, num_cells)
+    def __init__(self, in_features, num_actions, low, high, num_cells, in_keys=["current_state", "time"]):
+        backbone = MLPFeatureExtractor(in_features, num_cells)
         td_module_hidden = SafeModule(
             module=backbone,
-            in_keys=["observation"],
+            in_keys=in_keys,
             out_keys=["hidden"]
         )
 

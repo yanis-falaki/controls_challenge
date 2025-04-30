@@ -7,7 +7,7 @@ import os
 import random
 
 import sys
-sys.path.append("/home/yanisf/Documents/projects/controls_challenge/") # Bandaid fix
+sys.path.append("/home/yanisf/Documents/coding/controls_challenge/") # Bandaid fix
 
 from tinyphysics import TinyPhysicsModel,State, FuturePlan
 from tinyphysics import (
@@ -42,13 +42,33 @@ class TinySimWrapper(EnvBase):
         self._reset()
 
 
-        # Observation Spec
         self.observation_spec = Composite(
-            observation=Bounded(
-                shape=(6,),
-                low=torch.tensor([LATACCEL_RANGE[0], LATACCEL_RANGE[0], -torch.inf, -torch.inf, -torch.inf, 0]),
-                high=torch.tensor([LATACCEL_RANGE[1], LATACCEL_RANGE[1], torch.inf, torch.inf, torch.inf, 1]),
-                device=device, dtype=self.dtype),
+            past_states=Bounded(
+                shape=(49, 5),
+                low=torch.tensor([-torch.inf, -torch.inf, -torch.inf, LATACCEL_RANGE[0], LATACCEL_RANGE[0]], 
+                                device=device, dtype=self.dtype).repeat(49, 1),
+                high=torch.tensor([torch.inf, torch.inf, torch.inf, LATACCEL_RANGE[1], LATACCEL_RANGE[1]], 
+                                device=device, dtype=self.dtype).repeat(49, 1),
+            ),
+            current_state=Bounded(
+                shape=(5,),
+                low=torch.tensor([-torch.inf, -torch.inf, -torch.inf, LATACCEL_RANGE[0], LATACCEL_RANGE[0]], 
+                                device=device, dtype=self.dtype),
+                high=torch.tensor([torch.inf, torch.inf, torch.inf, LATACCEL_RANGE[1], LATACCEL_RANGE[1]], 
+                                device=device, dtype=self.dtype),
+            ),
+            future_plans=Bounded(
+                shape=(49, 4),
+                low=torch.tensor([-torch.inf, -torch.inf, -torch.inf, LATACCEL_RANGE[0]], 
+                                device=device, dtype=self.dtype).repeat(49, 1),
+                high=torch.tensor([torch.inf, torch.inf, torch.inf, LATACCEL_RANGE[1]], 
+                                device=device, dtype=self.dtype).repeat(49, 1),
+            ),
+            time=Bounded(
+                shape=(1,),
+                low=torch.tensor(0, device=device, dtype=self.dtype),
+                high=torch.tensor(1, device=device, dtype=self.dtype)
+            ),
             shape=()
         )
 
@@ -107,9 +127,16 @@ class TinySimWrapper(EnvBase):
             self.step_idx += 1
             self.update_states_targets_futureplan()
 
-        obs_tensor = self.create_observation_tensor()
+        current_state_tensor = self.create_current_state_tensor()
+        past_states_tensor = self.create_past_states_tensor()
+        future_plan_tensor = self.create_future_plan_tensor()
+        time = self.create_time_tensor()
+
         tensordict = TensorDict({
-            "observation": obs_tensor
+            "current_state": current_state_tensor,
+            "past_states": past_states_tensor,
+            "future_plans": future_plan_tensor,
+            "time": time,
         }, batch_size=self.batch_size, device=self.device)
 
         return tensordict
@@ -127,7 +154,11 @@ class TinySimWrapper(EnvBase):
         self.step_idx += 1
         self.update_states_targets_futureplan()
 
-        next_obs_tensor = self.create_observation_tensor()
+        current_state_tensor = self.create_current_state_tensor()
+        past_states_tensor = self.create_past_states_tensor()
+        future_plan_tensor = self.create_future_plan_tensor()
+        time = self.create_time_tensor()
+
         reward_tensor = torch.tensor([reward], dtype=self.dtype, device=self.device)
         if self.step_idx >= self.end_at_idx:
             done_tensor = torch.tensor([True], dtype=torch.bool, device=self.device)
@@ -135,7 +166,10 @@ class TinySimWrapper(EnvBase):
             done_tensor = torch.tensor([False], dtype=torch.bool, device=self.device)
 
         out_tensordict = TensorDict({
-            "observation": next_obs_tensor,
+            "current_state": current_state_tensor,
+            "past_states": past_states_tensor,
+            "future_plans": future_plan_tensor,
+            "time": time,
             "reward": reward_tensor,
             "done": done_tensor
         }, batch_size=self.batch_size, device=self.device)
@@ -156,21 +190,35 @@ class TinySimWrapper(EnvBase):
         """Return the state specification"""
         return self.observation_spec
     
-    def create_observation_tensor(self):
-        observation_tensor = torch.tensor([
+    def create_current_state_tensor(self):
+        current_state = torch.tensor([
+            *self.state_history[self.step_idx],
             self.target_lataccel_history[self.step_idx],
             self.current_lataccel,
-            *self.state_history[self.step_idx],
-            (self.step_idx - CONTROL_START_IDX) / (self.end_at_idx - CONTROL_START_IDX)
-        ], dtype=self.dtype)
-        """
-        full state:
-        self.target_lataccel_history[self.step_idx]
-        self.current_lataccel,
-        self.state_history
-        self.futureplan
-        """
-        return observation_tensor
+        ], dtype=self.dtype, device=self.device)
+        return current_state 
+    
+    def create_past_states_tensor(self):
+        past_states = torch.stack([
+                torch.tensor([state[0] for state in self.state_history[-50:-1]], dtype=self.dtype, device=self.device),
+                torch.tensor([state[1] for state in self.state_history[-50:-1]], dtype=self.dtype, device=self.device),
+                torch.tensor([state[2] for state in self.state_history[-50:-1]], dtype=self.dtype, device=self.device),
+                torch.tensor(self.target_lataccel_history[-50:-1], dtype=self.dtype, device=self.device),
+                torch.tensor(self.current_lataccel_history[-50:-1], dtype=self.dtype, device=self.device),
+            ], dim=1)
+        return past_states
+
+    def create_future_plan_tensor(self):
+        future_state = torch.stack([
+                torch.tensor(self.futureplan[1], dtype=self.dtype, device=self.device),
+                torch.tensor(self.futureplan[2], dtype=self.dtype, device=self.device),
+                torch.tensor(self.futureplan[3], dtype=self.dtype, device=self.device),
+                torch.tensor(self.futureplan[0], dtype=self.dtype, device=self.device), # target lataccel
+            ], dim=1)
+        return future_state
+    
+    def create_time_tensor(self):
+        return torch.tensor([(self.step_idx - CONTROL_START_IDX) / (self.end_at_idx - CONTROL_START_IDX)], dtype=self.dtype, device=self.device)
     
     def compute_single_step_cost(self, step_idx):
         lat_accel_cost = ((self.target_lataccel_history[step_idx] - self.current_lataccel_history[step_idx])**2) * 100

@@ -16,7 +16,6 @@ class MLPFeatureExtractor(nn.Module):
         )
 
     def forward(self, current_state, time):
-        print(current_state.shape)
         x = torch.cat([current_state, time], dim=-1)
         return self.net(x)
     

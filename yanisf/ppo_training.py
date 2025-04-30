@@ -168,7 +168,7 @@ if __name__ == "__main__":
     is_fork = multiprocessing.get_start_method() == "fork"
     device = torch.device(0) if torch.cuda.is_available() and not is_fork else torch.device("cpu")
 
-    num_envs = 2
+    num_envs = 4
     env = ParallelEnv(num_envs,
         lambda: TinySimWrapper(
             model_path="/home/yanisf/Documents/coding/controls_challenge/models/tinyphysics.onnx",
@@ -180,9 +180,9 @@ if __name__ == "__main__":
     low = env.action_spec_unbatched.space.low
     high = env.action_spec_unbatched.space.high
 
-    #ac = ActorCritic(in_features, num_actions, low, high, 256, in_keys=["current_state", "time"]).to(device)
-    ac = ActorCriticWithAttention(num_actions, low, high).to(device)
+    ac = ActorCritic(in_features, num_actions, low, high, 256, in_keys=["current_state", "time"]).to(device)
+    #ac = ActorCriticWithAttention(num_actions, low, high, embed_dim=8).to(device)
 
-    trainer = FrameLimitedTrainer(device, env, ac, total_frames_per_env=200000, frames_per_batch_per_env=400, clip_eps=0.2, frame_limit=400)
+    trainer = FrameLimitedTrainer(device, env, ac, total_frames_per_env=200000, frames_per_batch_per_env=800, clip_eps=0.2, frame_limit=400)
 
     trainer.train()

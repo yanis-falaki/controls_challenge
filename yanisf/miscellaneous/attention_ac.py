@@ -27,7 +27,7 @@ class AttentionFeatureExtractor(nn.Module):
         self.attention = nn.MultiheadAttention(embed_dim, num_heads, batch_first=True)
         self.norm2 = nn.LayerNorm(embed_dim) 
 
-    def forward(self, past_states, current_state, future_plans):
+    def forward(self, past_states, current_state, future_plans, time):
         # Add space for sequence len
         current_state = current_state.unsqueeze(-2)
         # Add current_lataccel as zero to future plans
@@ -45,6 +45,8 @@ class AttentionFeatureExtractor(nn.Module):
 
         current_output = attention_output[..., 50, :] + embedded[..., 50, :]
 
+        current_output = torch.cat([current_output, time], dim=-1)
+
         return current_output
 
 
@@ -54,12 +56,12 @@ class ActorCriticWithAttention(ActorValueOperator):
         backbone = AttentionFeatureExtractor(embed_dim, num_heads)
         td_module_hidden = TensorDictModule(
             module=backbone,
-            in_keys=["past_states", "current_state", "future_plans"],
+            in_keys=["past_states", "current_state", "future_plans", "time"],
             out_keys=["hidden"]
         )
 
         # Actor head: maps hidden state to action distribution parameters
-        actor_head = nn.Sequential(nn.Linear(embed_dim, 2 * num_actions), NormalParamExtractor())
+        actor_head = nn.Sequential(nn.Linear(embed_dim+1, 2 * num_actions), NormalParamExtractor())
         td_module_actor = TensorDictModule(
             module=actor_head,
             in_keys=["hidden"],
@@ -78,7 +80,7 @@ class ActorCriticWithAttention(ActorValueOperator):
         )
 
         # Critic head: maps hidden state to value
-        critic_head = nn.Linear(embed_dim, 1)
+        critic_head = nn.Linear(embed_dim+1, 1)
         td_module_critic = ValueOperator(
             module=critic_head,
             in_keys=["hidden"]
